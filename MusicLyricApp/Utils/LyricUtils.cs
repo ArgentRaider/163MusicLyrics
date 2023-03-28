@@ -32,7 +32,7 @@ namespace MusicLyricApp.Utils
             var dotType = param.DotType;
             var timestampFormat = param.OutputFileFormat == OutputFormatEnum.SRT ? param.SrtTimestampFormat : param.LrcTimestampFormat;
             
-            var voListList = await FormatLyric(lyricVo.Lyric, lyricVo.TranslateLyric, searchInfo);
+            var voListList = await FormatLyric(lyricVo.Lyric, lyricVo.TranslateLyric, searchInfo, lyricVo.Duration);
 
             if (searchInfo.SettingBean.Param.EnableVerbatimLyric)
             {
@@ -153,7 +153,7 @@ namespace MusicLyricApp.Utils
         /// <param name="translateLrc">原始的译文内容</param>
         /// <param name="searchInfo">处理参数</param>
         /// <returns></returns>
-        private static async Task<List<List<LyricLineVo>>> FormatLyric(string originLrc, string translateLrc, SearchInfo searchInfo)
+        private static async Task<List<List<LyricLineVo>>> FormatLyric(string originLrc, string translateLrc, SearchInfo searchInfo, long duration)
         {
             var outputLyricsTypes = searchInfo.SettingBean.Config.DeserializationOutputLyricsTypes();
             var showLrcType = searchInfo.SettingBean.Param.ShowLrcType;
@@ -194,10 +194,16 @@ namespace MusicLyricApp.Utils
             switch (showLrcType)
             {
                 case ShowLrcTypeEnum.STAGGER:
-                    foreach (var each in lyricsComplexList)
+                    if (searchInfo.SettingBean.Param.OutputFileFormat == OutputFormatEnum.LRC && lyricsComplexList.Count == 2)
                     {
-                        single = SortLrc(single, each, true);
+                        single = SortLrc(single, lyricsComplexList[0], true);
+                        single = SortTransLrc(single, lyricsComplexList[1], duration);
                     }
+                    else
+                        foreach (var each in lyricsComplexList)
+                        {
+                            single = SortLrc(single, each, true);
+                        }
                     break;
                 case ShowLrcTypeEnum.ISOLATED:
                     if (searchInfo.SettingBean.Config.SeparateFileForIsolated)
@@ -311,6 +317,56 @@ namespace MusicLyricApp.Utils
                 c.Add(listA[i++]);
             while (j < lenB)
                 c.Add(listB[j++]);
+            return c;
+        }
+
+        /// <summary>
+        /// 译文歌词排序，但各行歌词时间戳设为原文下一行歌词的时间戳
+        /// </summary>
+        private static List<LyricLineVo> SortTransLrc(List<LyricLineVo> listOrig, List<LyricLineVo> listTrans, long duration)
+        {
+            int lenOrig = listOrig.Count, lenTrans = listTrans.Count;
+            var c = new List<LyricLineVo>();
+
+            int i = 0, j = 0;
+
+            while (i < lenOrig && j < lenTrans)
+            {
+                var compare = listOrig[i].CompareTo(listTrans[j]);
+                //var compare = Compare(listOrig[i], listTrans[j], aFirst);
+
+                if (compare > 0)
+                {
+                    c.Add(listTrans[j++]);
+                }
+                else if (compare < 0)
+                {
+                    c.Add(listOrig[i++]);
+                }
+                else
+                {
+                    //c.Add(aFirst ? listOrig[i++] : listTrans[j++]);
+                    c.Add(listOrig[i++]);
+                    if (i < lenOrig)
+                    {
+                        listTrans[j].Timestamp = listOrig[i].Timestamp;
+                    }
+                    else if (j+1 < lenTrans)
+                    {
+                        listTrans[j].Timestamp = listTrans[j + 1].Timestamp;
+                    }
+                    else
+                    {
+                        listTrans[j].Timestamp = new LyricTimestamp(duration);
+                    }
+                    c.Add(listTrans[j++]);
+                }
+            }
+
+            while (i < lenOrig)
+                c.Add(listOrig[i++]);
+            while (j < lenTrans)
+                c.Add(listTrans[j++]);
             return c;
         }
 
